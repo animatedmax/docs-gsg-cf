@@ -1,0 +1,133 @@
+---
+title: Running Cloud Foundry on Your Computer
+owner: RelInt
+---
+
+## <a id="prerequisites"></a> Prerequisites
+
+* At least 16GB of RAM
+* BOSH CLI
+* Vagrant 
+* Virtualbox
+* CF CLI
+* Spiff
+* Git
+
+## <a id="bosh-lite"></a> Step 1: Create a BOSH-Lite VM
+
+You deploy Cloud Foundry using [BOSH](https://bosh.io/), an open source tool for release engineering, deployment, lifecycle management, and monitoring distributed systems. BOSH-Lite is a version of BOSH that fits on a pre-built [Vagrant](https://www.vagrantup.com/intro/index.html) box that you can use for exploration, development, and testing. 
+
+To spin up the BOSH-Lite VM with Vagrant, do the following:
+
+1. Clone the BOSH-Lite repository to your workspace:
+	<pre class="terminal">$ git clone http<span>s</span>://github.com/cloudfoundry/bosh-lite.git</pre>
+
+1. Navigate to the repository directory:
+	<pre class="terminal">$ cd ./bosh-lite</pre>
+
+
+1. Start Vagrant from the base directory of this repository, which contains the Vagrantfile:
+	<pre class="terminal">$ vagrant up --provider=virtualbox</pre>
+(pause VM when not in use)
+
+1. Add a set of route entries to your local route table to enable direct Warden container access every time your networking gets reset (e.g. reboot or connect to a different network). Your sudo password may be required.
+	<pre class="terminal">$ ./bin/add-route</pre>
+
+## <a id="stemcell"></a> Step 2: Upload a Stemcell
+
+1. Using the BOSH CLI, tell BOSH the IP of the BOSH Director that want to send commands to. The Director is the main BOSH component responsible for orchestrating deployments. For BOSH-Lite, the IP is set to `192.168.50.4`. 
+	<pre class="terminal">$ bosh target 192.168.50.4 lite</pre>
+	When prompted, enter username `admin` and password `admin`.
+
+1. Upload the latest version of the Warden BOSH-Lite stemcell directly to BOSH-Lite. The BOSH director creates additional VMs using [stemcells](http://bosh.io/docs/stemcell.html), which are versioned, IaaS-specific OS images. In order to for the BOSH Director to spin up the VMs required for Cloud Foundry on the BOSH-Lite VM, we must provide it with the correct stemcell:
+	<pre class="terminal">bosh upload stemcell http<span>s</span>://bosh.io/d/stemcells/bosh-warden-boshlite-ubuntu-trusty-go_agent</pre>
+
+## <a id="releases"></a> Step 3: Download the BOSH Releases
+
+In order to deploy software, BOSH requires a [release](http://bosh.io/docs/release.html). A release is a versioned collection of configuration properties, configuration templates, start up scripts, source code, binary artifacts, and anything else required to build and deploy software in a reproducible way. Cloud Foundry is made of two releases
+
+* `cf-release`: contains platform components such as...
+* `diego-release`: The runtime for hosting apps
+
+
+http://bosh.io/docs/deployment.html
+
+### Part A: Get the latest Cloud Foundry release
+
+1. Clone the CF release repository
+	<pre class="terminal">$ git clone http<span>s</span>://github.com/cloudfoundry/cf-release.git
+1. Change directories to the repository you just cloned: 
+	<pre class="terminal">$ cd ~/workspace/cf-release</pre>
+1. Check out the `release-candidate` branch:
+	<pre class="terminal">$ git checkout release-candidate</pre>
+1. Run the update script to ensure all the submodules are at the correct commit:
+	<pre class="terminal">$ ./scripts/update</pre>
+
+### Part B: Get the latest Diego release
+
+1. Clone the diego release repository:
+<pre class="terminal">git clone http<span>s</span>://github.com/cloudfoundry/diego-release.git</pre>
+1. Change directories to the repository you just cloned: 
+	<pre class="terminal">$ cd ~/workspace/diego-release</pre>
+1. Run the update script to ensure all the submodules are at the correct commit:
+	<pre class="terminal">$ ./scripts/update</pre>
+
+## <a id="manifests"></a> Step 4: Generate Manifests
+
+In order to deploy a release, BOSH requires a deployment manifest. The deployment manifest tells BOSH what resources to allocate and store. A user can manage a deployment via its deployment manifest. A deployment manifest contains all needed information for tracking, managing, and updating software on the deployment’s VMs. It describes the deployment in an IaaS-agnostic way.
+
+1. Generate the CF manifest:
+	<pre class="terminal">$ ./scripts/generate-bosh-lite-dev-manifest</pre>
+1. Generate the Diego manifest:
+	<pre class="terminal">$ ./scripts/generate-bosh-lite-manifests</pre>
+
+## <a id="deploy"></a> Step 5: Deploy Releases
+
+Now that you have your manifests, you're ready to deploy Cloud Foundry, which means deploying the Cloud Foundry release and the Diego Release. 
+
+1. Change directories to the `cf-release` repository:
+	<pre class="terminal">$ cd ~/workspace/cf-release</pre>
+1. Provide the BOSH CLI with the deployment manifest you generated:
+	<pre class="terminal">$ bosh deployment bosh-lite/deployments/cf.yml</pre>
+bosh -n create release --force &&
+bosh -n upload release &&
+bosh -n deploy</pre>
+
+1. Upload the latest garden-runc-release:
+	<pre class="terminal">$ bosh upload release http<span>s</span>://bosh.io/d/github.com/cloudfoundry/garden-runc-release</pre>
+
+1. Upload the latest cflinuxfs2-release:
+	<pre class="terminal">$ bosh upload release http<span>s</span>://bosh.io/d/github.com/cloudfoundry/cflinuxfs2-release</pre>
+
+1. Create, upload, and deploy the Diego release:
+	<pre class="terminal">cd ~/workspace/diego-release
+bosh deployment bosh-lite/deployments/diego.yml
+bosh -n create release --force &&
+bosh -n upload release &&
+bosh -n deploy</pre>
+
+## <a id="verif"></a>Step 6: Verify CF and Diego deployments
+
+1. Verify the deployments with BOSH. You should see two deployments called ‘cf-warden’ and ‘cf-warden-diego’ after executing this command.
+	<pre class="terminal">$ bosh deployments</pre>
+ 
+1. Verify the state of each deployment’s VMs with BOSH. You should see VMs under each deployment with the state ‘running’ after executing this command.
+	<pre class="terminal">$ bosh vms</pre>
+
+## <a id="push"></a>Step 7: Push an App
+Log in to the newly deployed CF instance with the cf CLI
+$ cf login -a api.bosh-lite.com -u admin -p admin --skip-ssl-validation
+NOTE: Install the latest cf CLI following the instructions in this README.
+ 
+Create org and space
+$ cf create-org my-org && cf target -o my-org && cf create-space space-one && cf target -s space-one
+ 
+Clone and push a sample application
+$ cd ~/workspace
+$ git clone https://github.com/cloudfoundry-samples/cf-sample-app-spring.git
+$ cd cf-sample-app-spring
+$ cf push cf-spring --no-manifest
+ 
+Open the sample app in your web browser
+Open http://cf-spring.bosh-lite.com in your web browser.
+NOTE: For more information on how CF and Diego work together to deploy and scale applications, check out the documentation on Diego’s architecture.
