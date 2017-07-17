@@ -3,78 +3,67 @@ title: Running Cloud Foundry on Your Computer
 owner: RelInt
 ---
 
+This topic describes how to run Cloud Foundry (CF) on your computer through BOSH-Lite, a version of [BOSH](https://bosh.io/) that fits on a pre-built [Vagrant](https://www.vagrantup.com/intro/index.html) box, which you can use for exploration, development, and testing.
+
 ## <a id="prerequisites"></a> Prerequisites
 
-* At least 16GB of RAM
-* BOSH CLI
-* Vagrant 
-* Virtualbox
-* CF CLI
-* Spiff
-* Git
+To complete the procedures in this topic, you must have the following:
+
+* [VirtualBox](https://www.virtualbox.org/)
+* 16GB of RAM on your computer
+
+Command line utilities:
+
+* [BOSH Command Line Interface (CLI)](https://bosh.io/docs/bosh-cli.html)
+* [CF CLI](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html)
+* [Vagrant](https://www.vagrantup.com/)
+* [Spiff](https://github.com/cloudfoundry-incubator/spiff)
+* [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+
 
 ## <a id="bosh-lite"></a> Step 1: Create a BOSH-Lite VM
 
-You deploy Cloud Foundry using [BOSH](https://bosh.io/), an open source tool for release engineering, deployment, lifecycle management, and monitoring distributed systems. BOSH-Lite is a version of BOSH that fits on a pre-built [Vagrant](https://www.vagrantup.com/intro/index.html) box that you can use for exploration, development, and testing. 
+To spin up the BOSH-Lite VM with Vagrant, paste the following script into your command line:
 
-To spin up the BOSH-Lite VM with Vagrant, do the following:
-
-1. Clone the BOSH-Lite repository to your workspace:
-	<pre class="terminal">$ git clone http<span>s</span>://github.com/cloudfoundry/bosh-lite.git</pre>
-
-1. Navigate to the repository directory:
-	<pre class="terminal">$ cd ./bosh-lite</pre>
-
-
-1. Start Vagrant from the base directory of this repository, which contains the Vagrantfile:
-	<pre class="terminal">$ vagrant up --provider=virtualbox</pre>
-(pause VM when not in use)
-
-1. Add a set of route entries to your local route table to enable direct Warden container access every time your networking gets reset (e.g. reboot or connect to a different network). Your sudo password may be required.
-	<pre class="terminal">$ ./bin/add-route</pre>
+<pre class="terminal">
+git clone http<span>s</span>://github.com/cloudfoundry/bosh-lite.git
+cd ./bosh-lite
+vagrant up --provider=virtualbox
+./bin/add-route
+</pre>
 
 ## <a id="stemcell"></a> Step 2: Upload a Stemcell
 
-1. Using the BOSH CLI, tell BOSH the IP of the BOSH Director that want to send commands to. The Director is the main BOSH component responsible for orchestrating deployments. For BOSH-Lite, the IP is set to `192.168.50.4`. 
-	<pre class="terminal">$ bosh target 192.168.50.4 lite</pre>
-	When prompted, enter username `admin` and password `admin`.
+In order to for the BOSH Director to spin up the VMs required for Cloud Foundry on the BOSH-Lite VM, we must provide it with the correct stemcell.
 
-1. Upload the latest version of the Warden BOSH-Lite stemcell directly to BOSH-Lite. The BOSH director creates additional VMs using [stemcells](http://bosh.io/docs/stemcell.html), which are versioned, IaaS-specific OS images. In order to for the BOSH Director to spin up the VMs required for Cloud Foundry on the BOSH-Lite VM, we must provide it with the correct stemcell:
+1. Using the BOSH CLI, tell BOSH the IP of the BOSH Director. For BOSH-Lite, the IP is set to `192.168.50.4`. 
+	<pre class="terminal">$ bosh target 192.168.50.4 lite</pre>
+	When prompted, enter username as `admin` and password as `admin`.
+
+1. Upload the latest version of the BOSH-Lite stemcell named `warden` directly to BOSH-Lite. 
 	<pre class="terminal">bosh upload stemcell http<span>s</span>://bosh.io/d/stemcells/bosh-warden-boshlite-ubuntu-trusty-go_agent</pre>
 
 ## <a id="releases"></a> Step 3: Download the BOSH Releases
 
-In order to deploy software, BOSH requires a [release](http://bosh.io/docs/release.html). A release is a versioned collection of configuration properties, configuration templates, start up scripts, source code, binary artifacts, and anything else required to build and deploy software in a reproducible way. Cloud Foundry is made of two releases
+In order to deploy software, BOSH requires a [release](http://bosh.io/docs/release.html). A release is a versioned collection of configuration properties, configuration templates, start up scripts, source code, binary artifacts, and anything else required to build and deploy software in a reproducible way. Cloud Foundry is made of two releases: `cf-release` and `diego-release`. 
 
-* `cf-release`: contains platform components such as...
-* `diego-release`: The runtime for hosting apps
-
-
-http://bosh.io/docs/deployment.html
-
-### Part A: Get the latest Cloud Foundry release
-
-1. Clone the CF release repository
-	<pre class="terminal">$ git clone http<span>s</span>://github.com/cloudfoundry/cf-release.git
-1. Change directories to the repository you just cloned: 
-	<pre class="terminal">$ cd ~/workspace/cf-release</pre>
-1. Check out the `release-candidate` branch:
-	<pre class="terminal">$ git checkout release-candidate</pre>
-1. Run the update script to ensure all the submodules are at the correct commit:
-	<pre class="terminal">$ ./scripts/update</pre>
-
-### Part B: Get the latest Diego release
-
-1. Clone the diego release repository:
-<pre class="terminal">git clone http<span>s</span>://github.com/cloudfoundry/diego-release.git</pre>
-1. Change directories to the repository you just cloned: 
-	<pre class="terminal">$ cd ~/workspace/diego-release</pre>
-1. Run the update script to ensure all the submodules are at the correct commit:
-	<pre class="terminal">$ ./scripts/update</pre>
+1. To get the latest CF release, paste the following script into your command line:
+	<pre class="terminal">
+	git clone http<span>s</span>://github.com/cloudfoundry/cf-release.git
+	cd ~/workspace/cf-release
+	git checkout release-candidate
+	./scripts/update
+	</pre>
+1. To get the latest Diego release, paste the following script into your command line:
+	<pre class="terminal">
+	git clone http<span>s</span>://github.com/cloudfoundry/diego-release.git
+	cd ~/workspace/diego-release
+	./scripts/update
+	</pre>
 
 ## <a id="manifests"></a> Step 4: Generate Manifests
 
-In order to deploy a release, BOSH requires a deployment manifest. The deployment manifest tells BOSH what resources to allocate and store. A user can manage a deployment via its deployment manifest. A deployment manifest contains all needed information for tracking, managing, and updating software on the deployment’s VMs. It describes the deployment in an IaaS-agnostic way.
+In order to deploy a release, BOSH requires a deployment manifest. The deployment manifest tells BOSH what resources to allocate and store. It tracks, manages, and updates software on the deployment VMs. 
 
 1. Generate the CF manifest:
 	<pre class="terminal">$ ./scripts/generate-bosh-lite-dev-manifest</pre>
@@ -89,6 +78,7 @@ Now that you have your manifests, you're ready to deploy Cloud Foundry, which me
 	<pre class="terminal">$ cd ~/workspace/cf-release</pre>
 1. Provide the BOSH CLI with the deployment manifest you generated:
 	<pre class="terminal">$ bosh deployment bosh-lite/deployments/cf.yml</pre>
+1. 
 bosh -n create release --force &&
 bosh -n upload release &&
 bosh -n deploy</pre>
